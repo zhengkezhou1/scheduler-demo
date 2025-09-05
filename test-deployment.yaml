@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batch-worker-deployment
+  labels:
+    app: batch-worker
+    component: worker
+spec:
+  replicas: 50
+  selector:
+    matchLabels:
+      app: batch-worker
+  template:
+    metadata:
+      labels:
+        app: batch-worker
+        component: worker
+        tier: compute
+        version: v1.0.0
+        workload-type: batch
+    spec:
+      containers:
+      - name: worker
+        image: busybox:1.36-musl
+        command: ["sh", "-c", "while true; do echo 'Processing batch job...'; sleep 30; done"]
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "10m"
+          limits:
+            memory: "32Mi"
+            cpu: "50m"

@@ -1,0 +1,25 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: "test-webhook"
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+    k8s-app: test-webhook
+webhooks:
+- name: "test-webhook.admission.k8s.io"
+  rules:
+  - apiGroups:   [""]
+    apiVersions: ["v1"]
+    operations:  ["*"]
+    resources:   ["pods"]
+    scope:       "*"
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: default
+      path: "/pods"
+    caBundle: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURDekNDQWZPZ0F3SUJBZ0lVYTI0aGEydDZjbDdZRVQrYWJIQUJ2NDdVSHI0d0RRWUpLb1pJaHZjTkFRRUwKQlFBd0ZURVRNQkVHQTFVRUF3d0tkMlZpYUc5dmF5MWpZVEFlRncweU5UQTVNRFV3TVRJd01qaGFGdzB5TmpBNQpNRFV3TVRJd01qaGFNQlV4RXpBUkJnTlZCQU1NQ25kbFltaHZiMnN0WTJFd2dnRWlNQTBHQ1NxR1NJYjNEUUVCCkFRVUFBNElCRHdBd2dnRUtBb0lCQVFDNWlkdWJuM3c2MUExcGYyNDhCQTRkK2k0Z0JiSlhJWmgxOW5wNzA4ZjIKVnBIZ0tjOVd6My95YTlTS2FXMzBtTldrY1ozUS8zRVFGZ2lmcm1vVHRTSVY4am9MZ1JOVVhSOENELythWHROawpqc09qOEhDQTYwWWc0WitGMjdKWVdHWm9EWkVwTFBkUXJrSlNnQVFUYzNyT0dFemZmUEg4eUFYRGNZWkRqaEVSCjUrMEx1N2JjZnNmWHcySHZGSnpBOTM0NmE0d283bkRwNHhpVUxrWkVBKzR3S3RiYkkxRkoxVDJmWkpFQXFmWDQKSzRLQTVXdDFyWW01L1ZsaU5KTFJOMldtZzJIYkYrcHVubXhOajBCWXlWbkZLWS83Nnl3YlpndzBFTXUvUk1KNAoyNUdKejNPdk4wSk4rWmt4RGFUeU1wc201M0g3alBvbHhGRGRhNUpRRmRONUFnTUJBQUdqVXpCUk1CMEdBMVVkCkRnUVdCQlNrU1FBTEcwR0JidFcrVFFRemhtbTlBYjdkalRBZkJnTlZIU01FR0RBV2dCU2tTUUFMRzBHQmJ0VysKVFFRemhtbTlBYjdkalRBUEJnTlZIUk1CQWY4RUJUQURBUUgvTUEwR0NTcUdTSWIzRFFFQkN3VUFBNElCQVFBUgp2WnFtbkJtL1Q3ZDhWQzNubWZzeU1VcE9rWUM0UnBrMXFoR2JqeVVMbFlpT1NsMWttdjgrY1ZlNTgxTW1rSTFQCjVDMGllZnZLWVM2SlZpVzlaWTB2dFlWbG03NHRUdllhUE04RVcxclFid3VQWkFBK0Z6YnpsRkk1dEFvejg4di8KYzQ4aUM5WlMyVjZvZXh5OTI0cEppcy9IQkZXZDhONmNleUdKZjhJdUNIQlpMV3I2TEZxQnJrTktibnpOS1oveApyNTlPV3duNzMxV0xEWWowTlA0SnpydWlTOVJYWnh5eWxaRXlOdU45WFBZamx1RkwwKzFNRHF0eVhvNjZVRjNOCm94bWQ0TkZsUERBZXN2MzFEWUF1RmNOWlkrM0I3T0FSblUvRjM2UkpOZ3ZxSmhnSEluZUZpVkZidVVxWmpOc3QKNFZuQkZCZTE3L09tN0JmL0hnMGcKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
+  admissionReviewVersions: ["v1"]
+  sideEffects: None
+  timeoutSeconds: 30
+  failurePolicy: Fail

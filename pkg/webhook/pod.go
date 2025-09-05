@@ -32,7 +32,6 @@ func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
 	reviewResponse := v1.AdmissionResponse{}
 	reviewResponse.Allowed = true
 
-	// 创建 JSON Patch 来添加 Affinity 和 TopologySpreadConstraints
 	patches := []map[string]any{
 		{
 			"op":   "add",
@@ -47,7 +46,8 @@ func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
 									{
 										Key:      "node.kubernetes.io/capacity",
 										Operator: corev1.NodeSelectorOpIn,
-										Values:   []string{"on-demand"},
+										// TODO: it's ok for no status app, don't do that on status app.
+										Values: []string{"spot"},
 									},
 								},
 							},
@@ -60,10 +60,11 @@ func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
 			"op":   "add",
 			"path": "/spec/topologySpreadConstraints",
 			"value": []corev1.TopologySpreadConstraint{
+				// TODO: MaxSkew value depends on how many nodes we have.
 				{
-					MaxSkew:           1,
+					MaxSkew:           30,
 					TopologyKey:       "node.kubernetes.io/capacity",
-					WhenUnsatisfiable: corev1.ScheduleAnyway,
+					WhenUnsatisfiable: corev1.DoNotSchedule,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: getSafeLabels(pod.Labels),
 					},
@@ -85,10 +86,7 @@ func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
 }
 
 func getSafeLabels(podLabels map[string]string) map[string]string {
-	// 只选择关键的业务标签，避免使用系统生成的标签
 	safeLabels := make(map[string]string)
-
-	// 常用的业务标签
 	businessLabels := []string{"app", "version", "component", "tier", "env"}
 
 	if podLabels != nil {
@@ -99,12 +97,10 @@ func getSafeLabels(podLabels map[string]string) map[string]string {
 		}
 	}
 
-	// 如果没有找到任何业务标签，使用 app 标签或创建一个默认标签
 	if len(safeLabels) == 0 {
 		if appValue, exists := podLabels["app"]; exists {
 			safeLabels["app"] = appValue
 		} else {
-			// 创建一个基于 pod 名称的标签作为后备
 			safeLabels["topology-group"] = "default"
 		}
 	}

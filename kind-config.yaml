@@ -1,0 +1,29 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  labels:
+- role: worker
+  labels:
+    node.kubernetes.io/capacity: on-demand
+- role: worker
+  labels:
+    node.kubernetes.io/capacity: on-demand
+# - role: worker
+#   labels:
+#     node.kubernetes.io/capacity: on-demand
+- role: worker
+  labels:
+    node.kubernetes.io/capacity: spot
+- role: worker
+  labels:
+    node.kubernetes.io/capacity: spot
+- role: worker
+  labels:
+    node.kubernetes.io/capacity: spot
+- role: worker
+  labels:
+    node.kubernetes.io/capacity: spot
+- role: worker
+  labels:
+    node.kubernetes.io/capacity: spot
