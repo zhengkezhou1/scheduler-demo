@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"github.com/scheduler-demo/pkg/kube"
 	"github.com/spf13/cobra"
 	v1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -20,6 +21,8 @@ var (
 
 	scheme = runtime.NewScheme()
 	codecs = serializer.NewCodecFactory(scheme)
+
+	KubeNodeClient *kube.NodeClient
 )
 
 // CmdWebhook is used by agnhost Cobra.
@@ -42,6 +45,14 @@ func init() {
 		"Secure port that the webhook listens on")
 
 	v1.AddToScheme(scheme)
+}
+
+// getKubeNodeClient returns the KubeNodeClient, initializing it if necessary
+func getKubeNodeClient() *kube.NodeClient {
+	if KubeNodeClient == nil {
+		KubeNodeClient = kube.NewNodeClient()
+	}
+	return KubeNodeClient
 }
 
 // admitv1beta1Func handles a v1 admission
@@ -111,6 +122,11 @@ func serve(w http.ResponseWriter, r *http.Request, admit admitHandler) {
 func servePods(w http.ResponseWriter, r *http.Request) {
 	serve(w, r, newDelegateToV1AdmitHandler(admitPods))
 }
+
+func serveDeployments(w http.ResponseWriter, r *http.Request) {
+	serve(w, r, newDelegateToV1AdmitHandler(admitDeployments))
+}
+
 func main(cmd *cobra.Command, args []string) {
 	config := Config{
 		CertFile: certFile,
@@ -122,6 +138,7 @@ func main(cmd *cobra.Command, args []string) {
 	}
 
 	http.HandleFunc("/pods", servePods)
+	http.HandleFunc("/deployments", serveDeployments)
 
 	err := server.ListenAndServeTLS("", "")
 	if err != nil {

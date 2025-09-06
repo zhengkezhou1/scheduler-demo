@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"math"
+
 	v1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,7 +21,7 @@ func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
 	if ar.Request.Resource != podResource {
 		err := fmt.Errorf("expect resource to be %s", podResource)
 		klog.Error(err)
-		return toV1AdmissionResponse(err)
+		return ToV1AdmissionResponse(err)
 	}
 
 	raw := ar.Request.Object.Raw
@@ -27,7 +29,7 @@ func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
 	deserializer := serializer.NewCodecFactory(runtime.NewScheme()).UniversalDeserializer()
 	if _, _, err := deserializer.Decode(raw, nil, &pod); err != nil {
 		klog.Error(err)
-		return toV1AdmissionResponse(err)
+		return ToV1AdmissionResponse(err)
 	}
 	reviewResponse := v1.AdmissionResponse{}
 	reviewResponse.Allowed = true
@@ -56,33 +58,54 @@ func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
 				},
 			},
 		},
-		{
-			"op":   "add",
-			"path": "/spec/topologySpreadConstraints",
-			"value": []corev1.TopologySpreadConstraint{
-				// TODO: MaxSkew value depends on how many nodes we have.
-				{
-					MaxSkew:           30,
-					TopologyKey:       "node.kubernetes.io/capacity",
-					WhenUnsatisfiable: corev1.DoNotSchedule,
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: getSafeLabels(pod.Labels),
-					},
-				},
-			},
-		},
+		topologySpreadConstraintsPatch(&pod),
 	}
 
 	patchBytes, err := json.Marshal(patches)
 	if err != nil {
 		klog.Error(err)
-		return toV1AdmissionResponse(err)
+		return ToV1AdmissionResponse(err)
 	}
 
 	pt := v1.PatchTypeJSONPatch
 	reviewResponse.PatchType = &pt
 	reviewResponse.Patch = patchBytes
 	return &reviewResponse
+}
+
+func topologySpreadConstraintsPatch(pod *corev1.Pod) map[string]any {
+	return map[string]any{
+		"op":   "add",
+		"path": "/spec/topologySpreadConstraints",
+		"value": []corev1.TopologySpreadConstraint{
+			{
+				MaxSkew:           maxSkew(),
+				TopologyKey:       "node.kubernetes.io/capacity",
+				WhenUnsatisfiable: corev1.DoNotSchedule,
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: getSafeLabels(pod.Labels),
+				},
+			},
+		},
+	}
+}
+
+func maxSkew() int32 {
+	schedulerNodes, err := getKubeNodeClient().ListSchedulerNodes()
+	if err != nil || schedulerNodes == nil {
+		klog.Error(err)
+		return 0
+	}
+
+	spotNodeCount := len(schedulerNodes.SpotNodes)
+	onDemandNodeCount := len(schedulerNodes.OnDemandNodes)
+
+	random := int32(math.Abs(float64(spotNodeCount - onDemandNodeCount)))
+
+	if random == 0 || random == 1 {
+		return 0
+	}
+	return <-DeploymentReplicaSetNum / random
 }
 
 func getSafeLabels(podLabels map[string]string) map[string]string {
@@ -108,7 +131,7 @@ func getSafeLabels(podLabels map[string]string) map[string]string {
 	return safeLabels
 }
 
-func toV1AdmissionResponse(err error) *v1.AdmissionResponse {
+func ToV1AdmissionResponse(err error) *v1.AdmissionResponse {
 	return &v1.AdmissionResponse{
 		Result: &metav1.Status{
 			Message: err.Error(),

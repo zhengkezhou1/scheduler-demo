@@ -1,7 +1,6 @@
 package kube
 
 import (
-	"flag"
 	"path/filepath"
 
 	"k8s.io/client-go/kubernetes"
@@ -11,16 +10,20 @@ import (
 )
 
 func defaultConfig() *rest.Config {
-	var kubeconfig *string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	// First try in-cluster config (for pods running in Kubernetes)
+	config, err := rest.InClusterConfig()
+	if err == nil {
+		return config
 	}
-	flag.Parse()
+
+	// Fall back to kubeconfig file
+	var kubeconfigPath string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfigPath = filepath.Join(home, ".kube", "config")
+	}
 
 	// use the current context in kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	config, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		panic(err.Error())
 	}

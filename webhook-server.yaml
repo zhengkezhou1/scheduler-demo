@@ -19,6 +19,7 @@ metadata:
   labels:
     app.kubernetes.io/name: webhook-server
 spec:
+  serviceAccountName: webhook-service-account
   containers:
   - name: webhook-server
     image: webhook:v1

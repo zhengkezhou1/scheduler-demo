@@ -26,14 +26,21 @@ build-image:
 	kind load docker-image $(IMAGE_NAME)
 	@echo "✅ Image build and load completed"
 
-# 3. Create TLS certificate Secret
+# 3. Deploy RBAC resources
+.PHONY: deploy-rbac
+deploy-rbac:
+	@echo "🔐 Deploying RBAC resources..."
+	kubectl apply -f rbac.yaml
+	@echo "✅ RBAC resources deployment completed"
+
+# 4. Create TLS certificate Secret
 .PHONY: create-certs
 create-certs:
 	@echo "🔐 Creating TLS certificate Secret..."
 	kubectl create secret tls webhook-certs --cert=certs/webhook-cert.pem --key=certs/webhook-key.pem --dry-run=client -o yaml | kubectl apply -f -
 	@echo "✅ TLS certificate Secret creation completed"
 
-# 4. Deploy Webhook server
+# 5. Deploy Webhook server
 .PHONY: deploy-webhook
 deploy-webhook:
 	@echo "🚀 Deploying Webhook server..."
@@ -42,7 +49,7 @@ deploy-webhook:
 	kubectl apply -f webhook-config.yaml
 	@echo "✅ Webhook deployment completed"
 
-# 5. Deploy test application
+# 6. Deploy test application
 .PHONY: deploy-test
 deploy-test-deployment:
 	@echo "🧪 Deploying test application..."
@@ -50,7 +57,7 @@ deploy-test-deployment:
 	@echo "✅ Test application deployment completed"
 
 .PHONY: deploy
-deploy: create-cluster build-image create-certs deploy-webhook deploy-test-deployment
+deploy: create-cluster build-image deploy-rbac create-certs deploy-webhook deploy-test-deployment
 	@echo "🎉 Complete deployment process finished!"
 
 # Clean up resources
@@ -60,6 +67,7 @@ clean:
 	kubectl delete -f test-deployment.yaml --ignore-not-found=true
 	kubectl delete -f webhook-config.yaml --ignore-not-found=true
 	kubectl delete -f webhook-server.yaml --ignore-not-found=true
+	kubectl delete -f rbac.yaml --ignore-not-found=true
 	kubectl delete secret webhook-certs --ignore-not-found=true
 	@echo "✅ Resource cleanup completed"
 

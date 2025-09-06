@@ -11,7 +11,7 @@ webhooks:
   - apiGroups:   [""]
     apiVersions: ["v1"]
     operations:  ["*"]
-    resources:   ["pods"]
+    resources:   ["pods","deployments"]
     scope:       "*"
   clientConfig:
     service:
@@ -22,4 +22,4 @@ webhooks:
   admissionReviewVersions: ["v1"]
   sideEffects: None
   timeoutSeconds: 30
-  failurePolicy: Fail
+  failurePolicy: Ignore
