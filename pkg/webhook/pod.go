@@ -105,8 +105,8 @@ func calculateMaxSkewForPod(pod *corev1.Pod) int32 {
 
 	random := int32(math.Abs(float64(spotNodeCount - onDemandNodeCount)))
 
-	// Get Deployment replica count through OwnerReference
-	replicas := getDeploymentReplicas(pod)
+	// Get replica count through OwnerReference
+	replicas := getWorkloadReplicas(pod)
 	if replicas == 1 {
 		return 1
 	}
@@ -114,8 +114,8 @@ func calculateMaxSkewForPod(pod *corev1.Pod) int32 {
 	return replicas - random
 }
 
-// getDeploymentReplicas gets the corresponding Deployment replica count through Pod's OwnerReference
-func getDeploymentReplicas(pod *corev1.Pod) int32 {
+// getWorkloadReplicas gets the corresponding Deployment/ReplicaSet replica count through Pod's OwnerReference
+func getWorkloadReplicas(pod *corev1.Pod) int32 {
 	// Iterate through Pod's OwnerReferences
 	for _, owner := range pod.OwnerReferences {
 		klog.Infof("Pod owner: %s, kind: %s", owner.Name, owner.Kind)
@@ -154,11 +154,30 @@ func getDeploymentReplicas(pod *corev1.Pod) int32 {
 					return 1 // Default replica count
 				}
 			}
+		} else if owner.Kind == "StatefulSet" {
+			statefulSet, err := kube.KubeClientset().AppsV1().StatefulSets(pod.Namespace).Get(
+				context.TODO(),
+				owner.Name,
+				metav1.GetOptions{},
+			)
+			if err != nil {
+				klog.Errorf("Failed to get StatefulSet %s: %v", owner.Name, err)
+				continue
+			}
+
+			// Return StatefulSet replica count
+			if statefulSet.Spec.Replicas != nil {
+				klog.Infof("Found StatefulSet %s with %d replicas for Pod %s",
+					owner.Name, *statefulSet.Spec.Replicas, pod.Name)
+				return *statefulSet.Spec.Replicas
+			}
+			klog.Infof("StatefulSet %s has no replicas for Pod %s, using default replica count", owner.Name, pod.Name)
+			return 1 // Default replica count
 		}
 	}
 
-	// If no Deployment found, return default value
-	klog.Infof("No Deployment found for Pod %s, using default replica count", pod.Name)
+	// If no Deployment or StatefulSet found, return default value
+	klog.Infof("No Deployment or StatefulSet found for Pod %s, using default replica count", pod.Name)
 	return 1
 }
 

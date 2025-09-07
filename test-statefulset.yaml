@@ -1,23 +1,23 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: batch-worker-deployment
+  name: mock-database
   labels:
-    app: batch-worker
-    component: worker
+    app: mock-database
+    component: database
 spec:
   replicas: 50
   selector:
     matchLabels:
-      app: batch-worker
+      app: mock-database
   template:
     metadata:
       labels:
-        app: batch-worker
-        component: worker
-        tier: compute
+        app: mock-database
+        component: database
+        tier: storage
         version: v1.0.0
-        workload-type: batch
+        workload-type: database
     spec:
       containers:
         - name: worker
