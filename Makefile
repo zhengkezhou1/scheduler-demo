@@ -45,6 +45,8 @@ create-certs:
 deploy-webhook:
 	@echo "🚀 Deploying Webhook server..."
 	kubectl apply -f webhook-server.yaml
+	@echo "⏳ Waiting for webhook to be ready..."
+	kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=webhook-server --timeout=60s
 	@echo "📋 Applying Webhook configuration..."
 	kubectl apply -f webhook-config.yaml
 	@echo "✅ Webhook deployment completed"
