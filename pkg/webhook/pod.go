@@ -1,11 +1,13 @@
 package webhook
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
 	"math"
 
+	"github.com/scheduler-demo/pkg/kube"
 	v1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,7 +17,7 @@ import (
 )
 
 func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
-	klog.V(2).Info("admitting pods")
+	klog.Info("admitting pods")
 	podResource := metav1.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 
 	if ar.Request.Resource != podResource {
@@ -79,7 +81,7 @@ func topologySpreadConstraintsPatch(pod *corev1.Pod) map[string]any {
 		"path": "/spec/topologySpreadConstraints",
 		"value": []corev1.TopologySpreadConstraint{
 			{
-				MaxSkew:           maxSkew(),
+				MaxSkew:           calculateMaxSkewForPod(pod),
 				TopologyKey:       "node.kubernetes.io/capacity",
 				WhenUnsatisfiable: corev1.DoNotSchedule,
 				LabelSelector: &metav1.LabelSelector{
@@ -90,11 +92,12 @@ func topologySpreadConstraintsPatch(pod *corev1.Pod) map[string]any {
 	}
 }
 
-func maxSkew() int32 {
+// calculateMaxSkewForPod dynamically adjusts based on pod replica count and actual node counts (spot, on-demand) in the cluster.
+func calculateMaxSkewForPod(pod *corev1.Pod) int32 {
 	schedulerNodes, err := getKubeNodeClient().ListSchedulerNodes()
 	if err != nil || schedulerNodes == nil {
 		klog.Error(err)
-		return 0
+		return 1
 	}
 
 	spotNodeCount := len(schedulerNodes.SpotNodes)
@@ -102,10 +105,61 @@ func maxSkew() int32 {
 
 	random := int32(math.Abs(float64(spotNodeCount - onDemandNodeCount)))
 
-	if random == 0 || random == 1 {
-		return 0
+	// Get Deployment replica count through OwnerReference
+	replicas := getDeploymentReplicas(pod)
+	if replicas == 1 {
+		return 1
 	}
-	return <-DeploymentReplicaSetNum / random
+
+	return replicas - random
+}
+
+// getDeploymentReplicas gets the corresponding Deployment replica count through Pod's OwnerReference
+func getDeploymentReplicas(pod *corev1.Pod) int32 {
+	// Iterate through Pod's OwnerReferences
+	for _, owner := range pod.OwnerReferences {
+		klog.Infof("Pod owner: %s, kind: %s", owner.Name, owner.Kind)
+		if owner.Kind == "ReplicaSet" {
+			// Get ReplicaSet
+			rs, err := kube.KubeClientset().AppsV1().ReplicaSets(pod.Namespace).Get(
+				context.TODO(),
+				owner.Name,
+				metav1.GetOptions{},
+			)
+			if err != nil {
+				klog.Errorf("Failed to get ReplicaSet %s: %v", owner.Name, err)
+				continue
+			}
+
+			// Iterate through ReplicaSet's OwnerReferences to get Deployment
+			for _, rsOwner := range rs.OwnerReferences {
+				klog.Infof("ReplicaSet owner: %s, kind: %s", rsOwner.Name, rsOwner.Kind)
+				if rsOwner.Kind == "Deployment" {
+					deployment, err := kube.KubeClientset().AppsV1().Deployments(pod.Namespace).Get(
+						context.TODO(),
+						rsOwner.Name,
+						metav1.GetOptions{},
+					)
+					if err != nil {
+						klog.Errorf("Failed to get Deployment %s: %v", rsOwner.Name, err)
+						continue
+					}
+
+					// Return Deployment replica count
+					if deployment.Spec.Replicas != nil {
+						klog.Infof("Found Deployment %s with %d replicas for Pod %s",
+							rsOwner.Name, *deployment.Spec.Replicas, pod.Name)
+						return *deployment.Spec.Replicas
+					}
+					return 1 // Default replica count
+				}
+			}
+		}
+	}
+
+	// If no Deployment found, return default value
+	klog.Infof("No Deployment found for Pod %s, using default replica count", pod.Name)
+	return 1
 }
 
 func getSafeLabels(podLabels map[string]string) map[string]string {

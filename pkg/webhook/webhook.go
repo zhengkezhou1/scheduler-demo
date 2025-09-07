@@ -123,10 +123,6 @@ func servePods(w http.ResponseWriter, r *http.Request) {
 	serve(w, r, newDelegateToV1AdmitHandler(admitPods))
 }
 
-func serveDeployments(w http.ResponseWriter, r *http.Request) {
-	serve(w, r, newDelegateToV1AdmitHandler(admitDeployments))
-}
-
 func main(cmd *cobra.Command, args []string) {
 	config := Config{
 		CertFile: certFile,
@@ -138,7 +134,6 @@ func main(cmd *cobra.Command, args []string) {
 	}
 
 	http.HandleFunc("/pods", servePods)
-	http.HandleFunc("/deployments", serveDeployments)
 
 	err := server.ListenAndServeTLS("", "")
 	if err != nil {
