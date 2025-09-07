@@ -37,29 +37,7 @@ func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
 	reviewResponse.Allowed = true
 
 	patches := []map[string]any{
-		{
-			"op":   "add",
-			"path": "/spec/affinity",
-			"value": corev1.Affinity{
-				NodeAffinity: &corev1.NodeAffinity{
-					PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
-						{
-							Weight: 100,
-							Preference: corev1.NodeSelectorTerm{
-								MatchExpressions: []corev1.NodeSelectorRequirement{
-									{
-										Key:      "node.kubernetes.io/capacity",
-										Operator: corev1.NodeSelectorOpIn,
-										// TODO: it's ok for no status app, don't do that on status app.
-										Values: []string{"spot"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+		nodeAffinityPatch(&pod),
 		topologySpreadConstraintsPatch(&pod),
 	}
 
@@ -73,6 +51,59 @@ func admitPods(ar v1.AdmissionReview) *v1.AdmissionResponse {
 	reviewResponse.PatchType = &pt
 	reviewResponse.Patch = patchBytes
 	return &reviewResponse
+}
+
+func nodeAffinityPatch(pod *corev1.Pod) map[string]any {
+	// Determine preferred node type based on workload type
+	// Stateless workloads (Deployments) -> prefer spot nodes (cost optimization)
+	// Stateful workloads (StatefulSets) -> prefer on-demand nodes (stability)
+	preferredNodeType := getPreferredNodeType(pod)
+
+	return map[string]any{
+		"op":   "add",
+		"path": "/spec/affinity",
+		"value": corev1.Affinity{
+			NodeAffinity: &corev1.NodeAffinity{
+				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
+					{
+						Weight: 100,
+						Preference: corev1.NodeSelectorTerm{
+							MatchExpressions: []corev1.NodeSelectorRequirement{
+								{
+									Key:      "node.kubernetes.io/capacity",
+									Operator: corev1.NodeSelectorOpIn,
+									Values:   []string{preferredNodeType},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// getPreferredNodeType determines the preferred node type based on workload characteristics
+// Returns "spot" for stateless workloads (Deployments) and "on-demand" for stateful workloads (StatefulSets)
+func getPreferredNodeType(pod *corev1.Pod) string {
+	// Check OwnerReferences to determine workload type
+	for _, owner := range pod.OwnerReferences {
+		switch owner.Kind {
+		case "StatefulSet":
+			// StatefulSets are stateful workloads - prefer stable on-demand nodes
+			klog.Infof("Pod %s is owned by StatefulSet %s, preferring on-demand nodes", pod.Name, owner.Name)
+			return "on-demand"
+		case "ReplicaSet":
+			// ReplicaSets are typically owned by Deployments (stateless) - prefer cost-effective spot nodes
+			klog.Infof("Pod %s is owned by ReplicaSet %s (likely Deployment), preferring spot nodes", pod.Name, owner.Name)
+			return "spot"
+		}
+	}
+
+	// For pods without clear ownership or unknown types, default to spot nodes
+	// This is cost-optimized default for most workloads
+	klog.Infof("Pod %s has no clear workload ownership, defaulting to spot nodes", pod.Name)
+	return "spot"
 }
 
 func topologySpreadConstraintsPatch(pod *corev1.Pod) map[string]any {
@@ -108,7 +139,7 @@ func calculateMaxSkewForPod(pod *corev1.Pod) int32 {
 	// Get replica count through OwnerReference
 	replicas := getWorkloadReplicas(pod)
 	if replicas == 1 {
-		return 1
+		return replicas
 	}
 
 	return replicas - random
