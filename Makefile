@@ -53,13 +53,14 @@ deploy-webhook:
 
 # 6. Deploy test application
 .PHONY: deploy-test
-deploy-test-deployment:
-	@echo "🧪 Deploying test application..."
+deploy-test-workeloads:
+	@echo "🧪 Deploying test workeloads..."
 	kubectl apply -f test-deployment.yaml
-	@echo "✅ Test application deployment completed"
+	kubectl apply -f test-statefulset.yaml
+	@echo "✅ Test workeloads deployment completed"
 
 .PHONY: deploy
-deploy: create-cluster build-image deploy-rbac create-certs deploy-webhook deploy-test-deployment
+deploy: create-cluster build-image deploy-rbac create-certs deploy-webhook deploy-test-workeloads
 	@echo "🎉 Complete deployment process finished!"
 
 # Clean up resources
@@ -79,8 +80,58 @@ status:
 	@echo "📊 Cluster status:"
 	@kubectl get nodes --show-labels | grep "node.kubernetes.io/capacity"
 	@echo ""
-	@echo "🧪 Test application status:"
-	@kubectl get pods -l app=batch-worker
+	@echo "🧪 Application Pod Status:"
+	@kubectl get pods -l 'app in (batch-worker,mock-database)' -o wide
 	@echo ""
-	@echo "📈 Pod distribution statistics:"
-	@kubectl get pods -l 'app in (batch-worker)' -o wide | grep -v NAME | awk '{print $$7}' | sort | uniq -c
+	@echo "📈 Node Distribution Analysis:"
+	@echo ""
+	@echo "  🔄 Stateless Apps (Deployments - should prefer SPOT nodes):"
+	@echo "    📊 batch-worker distribution:"
+	@kubectl get pods -l 'app=batch-worker' -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort | uniq -c | sed 's/^/      /'
+	@echo ""
+	@echo "  🗄️  Stateful Apps (StatefulSets - should prefer ON-DEMAND nodes):"
+	@echo "    📊 mock-database distribution:"
+	@kubectl get pods -l 'app=mock-database' -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort | uniq -c | sed 's/^/      /'
+	@echo ""
+	@echo "  🎯 Node Type Summary:"
+	@echo "    SPOT nodes (cost-optimized for stateless):"
+	@kubectl get nodes -l node.kubernetes.io/capacity=spot --no-headers | awk '{print "      " $$1}'
+	@echo "    ON-DEMAND nodes (stable for stateful):"
+	@kubectl get nodes -l node.kubernetes.io/capacity=on-demand --no-headers | awk '{print "      " $$1}'
+
+# Distribution analysis - focused view for demo purposes
+.PHONY: distribution
+distribution:
+	@echo "🎯 Scheduler Demo - Node Affinity Distribution Analysis"
+	@echo "================================================================"
+	@echo ""
+	@echo "📋 Webhook Strategy:"
+	@echo "  • Stateless workloads (Deployments) → prefer SPOT nodes (cost optimization)"
+	@echo "  • Stateful workloads (StatefulSets) → prefer ON-DEMAND nodes (stability)"
+	@echo ""
+	@echo "📊 Current Distribution:"
+	@echo ""
+	@echo "  🔄 batch-worker (Deployment/Stateless):"
+	@batch_count=$$(kubectl get pods -l app=batch-worker --no-headers 2>/dev/null | wc -l | tr -d ' '); \
+	if [ $$batch_count -gt 0 ]; then \
+		kubectl get pods -l app=batch-worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort | uniq -c | while read count node; do \
+			node_type=$$(kubectl get node $$node -o jsonpath='{.metadata.labels.node\.kubernetes\.io/capacity}' 2>/dev/null || echo "unknown"); \
+			echo "    $$count pods on $$node ($$node_type)"; \
+		done; \
+	else \
+		echo "    No batch-worker pods found"; \
+	fi
+	@echo ""
+	@echo "  🗄️  mock-database (StatefulSet/Stateful):"
+	@db_count=$$(kubectl get pods -l app=mock-database --no-headers 2>/dev/null | wc -l | tr -d ' '); \
+	if [ $$db_count -gt 0 ]; then \
+		kubectl get pods -l app=mock-database -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | sort | uniq -c | while read count node; do \
+			node_type=$$(kubectl get node $$node -o jsonpath='{.metadata.labels.node\.kubernetes\.io/capacity}' 2>/dev/null || echo "unknown"); \
+			echo "    $$count pods on $$node ($$node_type)"; \
+		done; \
+	else \
+		echo "    No mock-database pods found"; \
+	fi
+	@echo ""
+	@echo "💡 Expected behavior: batch-worker pods should mostly be on SPOT nodes,"
+	@echo "   while mock-database pods should be on ON-DEMAND nodes."
